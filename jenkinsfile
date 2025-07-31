@@ -1,0 +1,60 @@
+pipeline{
+    agent any
+
+    stages{
+        stage('Clean Docker Container') {
+            steps {
+                script {
+                    CONTAINER_ID = sh(
+                        script: "docker ps -aqf 'name=demonodejs'",
+                        returnStdout: true
+                    ).trim()
+
+                    if (CONTAINER_ID) {
+                        echo "Removing container with ID: ${CONTAINER_ID}"
+                        sh "docker stop ${CONTAINER_ID}"
+                        sh "docker rm ${CONTAINER_ID}"
+                    } else {
+                        echo "Container is not setup"
+                    }
+                }
+            }
+        }
+        stage('Git Checkout'){
+            steps{
+                git branch: 'main', changelog: false, poll: false, url: 'https://github.com/Nisha-Shah29/nodejs_webpage.git'
+            }
+        }
+        stage('Install Dependencies'){
+            steps{
+                sh 'npm install'
+            }
+        }
+        stage('OWASP Dependency Check') {
+            steps {
+                   dependencyCheck additionalArguments: '--scan ./ --format HTML ', odcInstallation: 'DP'
+                   dependencyCheckPublisher pattern: '**/dependency-check-report.html'
+            }
+        }
+        stage('Docker Build & Push') {
+            steps {
+                   script {
+                       withDockerRegistry(credentialsId: '30ad250a-c88e-4b27-9dc6-285e0e71dfda') {
+                            sh "docker build -t demonodejs ."
+                            sh "docker tag demonodejs nisha2906/nodejs:latest"
+                            sh "docker push nisha2906/nodejs:latest"
+                        }
+                   } 
+            }
+        }
+        stage('Docker Container') {
+            steps {
+                   script {
+                       withDockerRegistry(credentialsId: '30ad250a-c88e-4b27-9dc6-285e0e71dfda', toolName: 'docker') {
+                            sh "docker run -d --name demonodejs -p 8080:8081 nisha2906/nodejs:latest"
+                        }
+                   } 
+            }
+        }
+    }
+}
